@@ -34,7 +34,7 @@ namespace HelloWorld
 
             if (IsServer)
             {
-                if(NetworkManager.Singleton.ConnectedClients.Count > 2){
+                if(NetworkManager.Singleton.ConnectedClients.Count > 6){
                     NetworkManager.Singleton.DisconnectClient(OwnerClientId);
                     Debug.Log("Player disconnected due to too many players");
                     return;
