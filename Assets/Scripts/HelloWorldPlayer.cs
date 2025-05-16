@@ -32,7 +32,7 @@ namespace HelloWorld
                 RequestInitialColorServerRpc();
             }
 
-            // Asegúrate de actualizar a cor local cando se modifique a variable sincronizada
+            // Updating color index  after the player has spawned
             colorIndex.OnValueChanged += OnColorChanged;
         }
 
