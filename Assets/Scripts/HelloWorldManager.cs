@@ -3,11 +3,7 @@ using UnityEngine;
 
 namespace HelloWorld
 {
-    /// <summary>
-    /// Engade este script ao GameObject que contén o NetworkManager.
-    /// Mostra botóns para iniciar como Host, Server ou Client,
-    /// e permite aos xogadores mover a súa posición e cambiar a súa cor.
-    /// </summary>
+ 
     public class HelloWorldManager : MonoBehaviour
     {
         private NetworkManager m_NetworkManager;

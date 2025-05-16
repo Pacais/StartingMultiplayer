@@ -32,6 +32,19 @@ namespace HelloWorld
                 RequestInitialColorServerRpc();
             }
 
+            if (IsServer)
+            {
+                if(NetworkManager.Singleton.ConnectedClients.Count > 2){
+                    NetworkManager.Singleton.DisconnectClient(OwnerClientId);
+                    Debug.Log("Player disconnected due to too many players");
+                    return;
+                }
+                {
+                    // If there are multiple players, we can assign a random color to the new player
+                    colorIndex.Value = Random.Range(0, availableColors.Length);
+                }
+            }
+
             // Updating color index  after the player has spawned
             colorIndex.OnValueChanged += OnColorChanged;
         }
