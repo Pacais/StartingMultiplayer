@@ -1,126 +1,105 @@
 using System.Collections.Generic;
-using UnityEngine;
 using Unity.Netcode;
+using UnityEngine;
 
-namespace HelloWorld
+public class HelloWorldManager : NetworkBehaviour
 {
-    public class HelloWorldManager : MonoBehaviour
+    public GameObject plane;
+    public float planeWidth = 10f;
+    public int maxPlayersPerTeam = 2;
+
+    private readonly List<ulong> team1Players = new List<ulong>();
+    private readonly List<ulong> team2Players = new List<ulong>();
+    private readonly List<ulong> noTeamPlayers = new List<ulong>();
+
+    private float zoneBoundary = 1.5f;
+
+    /// <summary>
+    /// Devolve un punto aleatorio na franxa central (zona 0).
+    /// </summary>
+    public Vector3 GetRandomPositionInCenter()
     {
-        private NetworkManager m_NetworkManager;
+        float x = Random.Range(-zoneBoundary, zoneBoundary);
+        float z = Random.Range(-planeWidth / 2f, planeWidth / 2f);
+        return new Vector3(x, 1f, z);
+    }
 
-        private static readonly List<Color> MasterColors = new List<Color>
+    /// <summary>
+    /// Usado ao spawnear un xogador: cadrará na zona central.
+    /// </summary>
+    public Vector3 GetSpawnPosition()
+    {
+        return GetRandomPositionInCenter();
+    }
+
+    /// <summary>
+    /// Lóxica para comprobar se un cliente pode entrar na zona 'zone'.
+    /// - 0 = Sen equipo (zona central, sen límite).
+    /// - 1 = Equipo 1 (ata maxPlayersPerTeam).
+    /// - 2 = Equipo 2 (ata maxPlayersPerTeam).
+    /// Devolve true se se move, false se o equipo está cheo.
+    /// </summary>
+    public bool TryMoveToZone(ulong clientId, int zone)
+    {
+        if (zone == 1)
         {
-            Color.red,
-            Color.blue,
-            Color.green,
-            Color.yellow,
-            Color.magenta,
-            Color.cyan
-        };
-
-        private readonly List<Color> _colorPool = new List<Color>();
-        private readonly Dictionary<ulong, Color> _assignedColors = new Dictionary<ulong, Color>();
-
-        private void Awake()
+            if (team1Players.Count >= maxPlayersPerTeam && !team1Players.Contains(clientId))
+                return false;
+            RemovePlayerFromTeams(clientId);
+            team1Players.Add(clientId);
+            return true;
+        }
+        else if (zone == 2)
         {
-            m_NetworkManager = GetComponent<NetworkManager>();
-            _colorPool.AddRange(MasterColors);
+            if (team2Players.Count >= maxPlayersPerTeam && !team2Players.Contains(clientId))
+                return false;
+            RemovePlayerFromTeams(clientId);
+            team2Players.Add(clientId);
+            return true;
+        }
+        else if (zone == 0)
+        {
+            RemovePlayerFromTeams(clientId);
+            noTeamPlayers.Add(clientId);
+            return true;
+        }
+        return false;
+    }
 
-            m_NetworkManager.NetworkConfig.ConnectionApproval = true;
-            m_NetworkManager.ConnectionApprovalCallback += ApproveOrReject;
-            m_NetworkManager.OnClientConnectedCallback += OnClientConnected;
-            m_NetworkManager.OnClientDisconnectCallback += OnClientDisconnected;
+    private void RemovePlayerFromTeams(ulong clientId)
+    {
+        team1Players.Remove(clientId);
+        team2Players.Remove(clientId);
+        noTeamPlayers.Remove(clientId);
+    }
+
+    /// <summary>
+    /// ServerRpc chamado polos clientes para pedir permiso de cambio de zona,
+    /// pasando tamén a posición á que o xogador intentou moverse.
+    /// </summary>
+    [ServerRpc(RequireOwnership = false)]
+    public void RequestMoveZoneServerRpc(Vector3 requestedPosition, int zone, ServerRpcParams rpcParams = default)
+    {
+        ulong clientId = rpcParams.Receive.SenderClientId;
+        bool canMove = TryMoveToZone(clientId, zone);
+
+        if (!canMove)
+        {
+            // Se o equipo está cheo, non actualizamos Position nin CurrentZone.
+            // Podes engadir un ClientRpc de aviso se queres feedback visual.
+            return;
         }
 
-        private void OnGUI()
-        {
-            GUILayout.BeginArea(new Rect(10, 10, 300, 300));
+        // Se está permitido, actualizamos a zona e a posición directamente:
+        var networkObj = NetworkManager.Singleton.SpawnManager.GetPlayerNetworkObject(clientId);
+        if (networkObj == null) return;
+        var player = networkObj.GetComponent<HelloWorldPlayer>();
+        if (player == null) return;
 
-            if (!m_NetworkManager.IsClient && !m_NetworkManager.IsServer)
-            {
-                if (GUILayout.Button("Host")) m_NetworkManager.StartHost();
-                if (GUILayout.Button("Client")) m_NetworkManager.StartClient();
-                if (GUILayout.Button("Server")) m_NetworkManager.StartServer();
-            }
-            else
-            {
-                var mode = m_NetworkManager.IsHost ? "Host"
-                         : m_NetworkManager.IsServer ? "Server"
-                                                     : "Client";
-                GUILayout.Label("Transporte: " +
-                    m_NetworkManager.NetworkConfig.NetworkTransport.GetType().Name);
-                GUILayout.Label("Modo: " + mode);
+        // 1) Actualizar zona
+        player.CurrentZone.Value = zone;
 
-                // Quitamos botón de Move porque el movimiento ahora es manual por input
-
-                // Botón para que el cliente pida cambio de color
-                if (m_NetworkManager.IsClient)
-                {
-                    if (GUILayout.Button("Change Color"))
-                    {
-                        var local = m_NetworkManager.SpawnManager
-                            .GetLocalPlayerObject()
-                            .GetComponent<HelloWorldPlayer>();
-                        local.RequestColorChangeServerRpc();
-                    }
-                }
-            }
-
-            GUILayout.EndArea();
-        }
-
-        private void ApproveOrReject(NetworkManager.ConnectionApprovalRequest req, NetworkManager.ConnectionApprovalResponse res)
-        {
-            if (_assignedColors.Count >= MasterColors.Count)
-            {
-                res.Approved = false;
-                res.Reason = "Lobby lleno (máx. 6 jugadores).";
-                return;
-            }
-
-            res.Approved = true;
-            res.CreatePlayerObject = true;
-            res.PlayerPrefabHash = null;
-            res.Position = Vector3.zero;
-            res.Rotation = Quaternion.identity;
-        }
-
-        private void OnClientConnected(ulong clientId)
-        {
-            AssignNewColor(clientId);
-        }
-
-        private void OnClientDisconnected(ulong clientId)
-        {
-            if (_assignedColors.TryGetValue(clientId, out var color))
-            {
-                _assignedColors.Remove(clientId);
-                _colorPool.Add(color);
-            }
-        }
-
-        public void AssignNewColor(ulong clientId)
-        {
-            if (_assignedColors.TryGetValue(clientId, out var old))
-            {
-                _colorPool.Add(old);
-            }
-
-            if (_colorPool.Count == 0)
-            {
-                Debug.LogWarning("¡No hay colores libres para asignar!");
-                return;
-            }
-
-            Color newColor = _colorPool[0];
-            _colorPool.RemoveAt(0);
-
-            _assignedColors[clientId] = newColor;
-
-            var player = m_NetworkManager.SpawnManager
-                .GetPlayerNetworkObject(clientId)
-                .GetComponent<HelloWorldPlayer>();
-            player.PlayerColor.Value = newColor;
-        }
+        // 2) Actualizar posición ao valor que o cliente pasou
+        player.Position.Value = requestedPosition;
     }
 }
