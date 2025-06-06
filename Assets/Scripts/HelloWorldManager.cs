@@ -12,7 +12,7 @@ public class HelloWorldManager : NetworkBehaviour
     private readonly List<ulong> team2Players = new List<ulong>();
     private readonly List<ulong> noTeamPlayers = new List<ulong>();
 
-    private float zoneBoundary = 1.5f;
+    public float zoneBoundary = 1.5f;
 
     /// <summary>
     /// Devolve un punto aleatorio na franxa central (zona 0).
@@ -101,5 +101,30 @@ public class HelloWorldManager : NetworkBehaviour
 
         // 2) Actualizar posición ao valor que o cliente pasou
         player.Position.Value = requestedPosition;
+    }
+
+    /// <summary>
+    /// Teleporta a todos os xogadores á zona central cunha pequena variación aleatoria.
+    /// Só pode executarse no servidor (host).
+    /// </summary>
+    public void TeleportAllToCenter()
+    {
+        if (!IsServer) return;
+
+        Vector3 centerPos = GetRandomPositionInCenter();
+
+        foreach (var clientId in NetworkManager.Singleton.ConnectedClientsIds)
+        {
+            var playerObj = NetworkManager.Singleton.SpawnManager.GetPlayerNetworkObject(clientId);
+            if (playerObj == null) continue;
+            var player = playerObj.GetComponent<HelloWorldPlayer>();
+            if (player == null) continue;
+
+            // Poñemos a zona central (0)
+            player.CurrentZone.Value = 0;
+
+            // Teleportamos á posición central (con lixeira variación)
+            player.Position.Value = centerPos + new Vector3(Random.Range(-1f, 1f), 0f, Random.Range(-1f, 1f));
+        }
     }
 }

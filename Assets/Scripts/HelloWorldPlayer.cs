@@ -28,19 +28,19 @@ public class HelloWorldPlayer : NetworkBehaviour
             CurrentZone.Value = 0;
         }
 
-        // Cando Position cambie no servidor, actualizamos transform:
+        // Actualizar posición visual cando cambie Position
         Position.OnValueChanged += (oldPos, newPos) =>
         {
             transform.position = newPos;
         };
 
-        // Cando CurrentZone cambie, actualizamos cor:
+        // Actualizar cor cando cambie CurrentZone
         CurrentZone.OnValueChanged += (oldZone, newZone) =>
         {
             SetColorByZone(newZone);
         };
 
-        // Inicializamos posición e cor no cliente
+        // Inicializar posición e cor visual
         transform.position = Position.Value;
         SetColorByZone(CurrentZone.Value);
     }
@@ -49,6 +49,22 @@ public class HelloWorldPlayer : NetworkBehaviour
     {
         if (!IsOwner) return;
 
+        // Detectar teleport ao pulsar M
+        if (Input.GetKeyDown(KeyCode.M))
+        {
+            if (IsServer)
+            {
+                manager.TeleportAllToCenter();
+            }
+            else
+            {
+                Vector3 centerPos = manager.GetSpawnPosition();
+                TeleportRequestServerRpc(centerPos);
+            }
+            return; // Saímos para non mover ao mesmo tempo
+        }
+
+        // Movemento normal
         float moveX = Input.GetAxis("Horizontal");
         float moveZ = Input.GetAxis("Vertical");
 
@@ -59,14 +75,15 @@ public class HelloWorldPlayer : NetworkBehaviour
 
         int newZone = DetermineZone(newPos.x);
 
-        if (newZone != CurrentZone.Value)
-        {
-            // Pedir ao servidor permiso para cambiar de zona, enviando a posición desexada
-            manager.RequestMoveZoneServerRpc(newPos, newZone);
-        }
+       if (newZone != CurrentZone.Value)
+{
+    // Pedir permiso ao servidor para cambiar de zona con nova posición
+    manager.RequestMoveZoneServerRpc(newPos, newZone);
+}
+
         else
         {
-            // Movemento dentro da mesma zona: pedimos ao servidor que actualice Position.
+            // Movemento dentro da mesma zona
             RequestMoveServerRpc(newPos);
         }
     }
@@ -82,8 +99,14 @@ public class HelloWorldPlayer : NetworkBehaviour
     [ServerRpc(RequireOwnership = true)]
     private void RequestMoveServerRpc(Vector3 newPosition, ServerRpcParams rpcParams = default)
     {
-        // Só o servidor pode escribir Position
         Position.Value = newPosition;
+    }
+
+    [ServerRpc(RequireOwnership = true)]
+    private void TeleportRequestServerRpc(Vector3 pos, ServerRpcParams rpcParams = default)
+    {
+        Position.Value = pos;
+        CurrentZone.Value = 0;
     }
 
     public void SetColorByZone(int zone)
